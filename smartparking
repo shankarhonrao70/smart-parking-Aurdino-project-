@@ -1,0 +1,144 @@
+// Final Arduino code of smart parking........................
+
+#include <Servo.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+
+// Define components
+Servo entryGate, exitGate;
+
+// IR Sensor Pins
+const int irEntry = 2;
+const int irExit = 3;
+
+// Ultrasonic Sensor Pins
+const int trigPin = 5;
+const int echoPin = 6;
+
+// Servo Pins
+const int entryGatePin = 9;
+const int exitGatePin = 10;
+
+// Parking slot limit
+int totalSlots = 11;
+int occupiedSlots = 0;
+
+// LCD Setup
+LiquidCrystal_I2C lcd(0x27, 16, 2);  // I2C Address might be 0x3F on some modules
+
+void setup() {
+    Serial.begin(115200);
+
+    // Initialize pins
+    pinMode(irEntry, INPUT);
+    pinMode(irExit, INPUT);
+    pinMode(trigPin, OUTPUT);
+    pinMode(echoPin, INPUT);
+    
+    // Attach servo motors
+    entryGate.attach(entryGatePin);
+    exitGate.attach(exitGatePin);
+
+    // Initialize LCD
+    lcd.init();
+    lcd.backlight();
+
+    // Close both gates initially
+    entryGate.write(180); 
+    exitGate.write(180);
+
+    Serial.println("Parking system initialized.");
+    lcd.setCursor(0, 0);
+    lcd.print("System Ready");
+    delay(1500);
+    updateStatus();
+}
+
+void loop() {
+    checkEntry();
+    checkExit();
+    checkParkingSlot();
+    delay(500);
+}
+
+// Check if a car is entering
+void checkEntry() {
+    if (digitalRead(irEntry) == LOW && occupiedSlots < totalSlots) {
+        Serial.println("Car Detected at Entry...");
+        entryGate.write(90); // Open gate
+        delay(2500);         // Time for car to pass
+        entryGate.write(180);  // Close gate
+
+        occupiedSlots++;
+        updateStatus();
+    } 
+    else if (digitalRead(irEntry) == LOW && occupiedSlots >= totalSlots) {
+        Serial.println("Entry Denied: Parking Full");
+    }
+}
+
+// Check if a car is exiting
+void checkExit() {
+    if (digitalRead(irExit) == LOW && occupiedSlots > 0) {
+        Serial.println("Car Detected at Exit...");
+        exitGate.write(90);  // Open gate
+        delay(2500);         // Time for car to leave
+        exitGate.write(180); // Close gate
+
+        occupiedSlots--;
+        updateStatus();
+    } 
+    else if (digitalRead(irExit) == LOW && occupiedSlots == 0) {
+        Serial.println("Exit Denied: No Cars in Parking");
+    }
+}
+
+// Check slot availability using ultrasonic sensor
+void checkParkingSlot() {
+    long duration;
+    int distance;
+    
+    digitalWrite(trigPin, LOW);
+    delayMicroseconds(2);
+    digitalWrite(trigPin, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(trigPin, LOW);
+    
+    duration = pulseIn(echoPin, HIGH);
+    distance = duration * 0.034 / 2; // Convert to cm
+
+    Serial.print("Distance: ");
+    Serial.print(distance);
+    Serial.println(" cm");
+
+    lcd.setCursor(0, 1);
+    if (distance < 10) {
+        lcd.print("Object Detected ");
+    } else {
+        lcd.print("Slot Available  ");
+    }
+
+    delay(1000);
+}
+
+// Print parking status
+void updateStatus() {
+    Serial.print("Slots Occupied: ");
+    Serial.print(occupiedSlots);
+    Serial.print("/");
+    Serial.println(totalSlots);
+
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Occupied: ");
+    lcd.print(occupiedSlots);
+    lcd.print("/");
+    lcd.print(totalSlots);
+
+    lcd.setCursor(0, 1);
+    if (occupiedSlots < totalSlots) {
+        lcd.print("Status: Space   ");
+    } else {
+        lcd.print("Status: Full    ");
+    }
+}
